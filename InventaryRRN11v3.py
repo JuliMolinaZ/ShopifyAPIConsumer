@@ -21,62 +21,24 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# Configuración de Shopify API desde .env
-SHOPIFY_API_KEY = os.getenv('SHOPIFY_API_KEY')
-SHOPIFY_API_PASSWORD = os.getenv('SHOPIFY_API_PASSWORD')
-SHOPIFY_STORE_URL = os.getenv('SHOPIFY_STORE_URL')
+# Cargar variables de entorno
+load_dotenv()
 
-# Configuración de MySQL desde .env
-DB_HOST = os.getenv('DB_HOST')
-DB_PORT = os.getenv('DB_PORT', 3306)
-DB_USER = os.getenv('DB_USER')
-DB_PASSWORD = os.getenv('DB_PASSWORD')
-DB_NAME = os.getenv('DB_NAME')
+# Variables de entorno
+API_KEY = os.getenv("SHOPIFY_API_KEY")
+API_PASSWORD = os.getenv("SHOPIFY_API_PASSWORD")
+STORE_URL = os.getenv("SHOPIFY_STORE_URL")
+DB_CONFIG = {
+    'host': os.getenv("DB_HOST"),
+    'user': os.getenv("DB_USER"),
+    'password': os.getenv("DB_PASSWORD"),
+    'database': os.getenv("DB_NAME"),
+    'port': os.getenv("DB_PORT")
+}
 
-# Ubicaciones Deseadas (nombres tal como aparecen en Shopify)
-DESIRED_LOCATIONS = [
-    'CANCÚN',
-    'CEDIS',
-    'EXPERIENCIA',
-    'GUADALAJARA',
-    'LIVERPOOL',
-    'ONLINE',
-    'RAYONETA 1.0',
-    'RAYONETA 2.0'
-]
+# Lista de nombres de ubicaciones deseadas
+DESIRED_LOCATIONS = ["ONLINE", "CEDIS", "GUADALAJARA", "CANCÚN", "RAYONETA 1.0", "RAYONETA 2.0", "EXPERIENCIA", "LIVERPOOL"]
 
-# Clase para manejar el Rate Limiting de Shopify
-class RateLimiter:
-    def __init__(self, max_calls, period):
-        self.calls = deque()
-        self.max_calls = max_calls
-        self.period = period  # en segundos
-
-    def wait(self):
-        current = time.time()
-        while self.calls and self.calls[0] <= current - self.period:
-            self.calls.popleft()
-        if len(self.calls) >= self.max_calls:
-            wait_time = self.period - (current - self.calls[0])
-            # Añadir jitter
-            wait_time = wait_time / 2 + random.uniform(0, wait_time / 2)
-            logging.info(f"Rate limit alcanzado. Esperando {wait_time:.2f} segundos.")
-            time.sleep(wait_time)
-        self.calls.append(time.time())
-
-# Función para limpiar strings
-def clean_string(s):
-    if s:
-        return s.strip().replace("'", "''")
-    return 'Unknown'
-
-# Función para validar barcode (puedes ajustar según tus reglas)
-def validate_barcode(barcode):
-    if barcode and barcode != '':
-        return True
-    return False
-
-# Función para crear conexión a MySQL
 def create_db_connection():
     try:
         conn = mysql.connector.connect(
