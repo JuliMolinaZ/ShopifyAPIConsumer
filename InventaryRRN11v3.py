@@ -37,6 +37,7 @@ DB_CONFIG = {
 # Lista de nombres de ubicaciones deseadas
 DESIRED_LOCATIONS = ["ONLINE", "CEDIS", "GUADALAJARA", "CANCÚN", "RAYONETA 1.0", "RAYONETA 2.0", "EXPERIENCIA", "LIVERPOOL"]
 
+#Comentario de prueba
 def create_db_connection():
     """
     Crea una conexión a la base de datos MySQL usando las configuraciones proporcionadas.
