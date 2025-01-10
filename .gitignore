@@ -1,0 +1,13 @@
+# Ignorar archivos de log
+*.log
+
+# Ignorar el entorno virtual
+env/
+.env/
+
+# Ignorar el archivo .env con credenciales
+.env
+
+# Ignorar el directorio __pycache__ y los archivos .pyc generados
+__pycache__/
+*.pyc
