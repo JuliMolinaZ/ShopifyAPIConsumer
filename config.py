@@ -3,7 +3,7 @@ import os
 
 class Config:
     def __init__(self):
-        load_dotenv()
+        load_dotenv(override=True)#El override asegura que cualquier variable preva se reemplaza por la nueva
         # Shopify Config
         self.SHOPIFY_API_KEY = os.getenv('SHOPIFY_API_KEY')
         self.SHOPIFY_API_PASSWORD = os.getenv('SHOPIFY_API_PASSWORD')

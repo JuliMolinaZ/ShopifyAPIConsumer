@@ -8,7 +8,6 @@ from math import ceil
 from config import Config
 from db import Database
 from utils import *
-import os
 import logging
 from shopify import *
 from rate_limiter import *
@@ -251,6 +250,179 @@ def fetch_inventory_levels(api_key, password, store_name, inventory_item_ids, lo
     return inventory_dict
 
 
+def insert_or_update_products_variants_and_inventory(products, conn, locations, inventory_levels):
+    cursor = conn.cursor()
+    try:
+        desired_location_ids = filter_desired_locations(locations)
+        if not desired_location_ids:
+            logging.error("No se encontraron las ubicaciones deseadas. Verifica los nombres de las ubicaciones en Shopify.")
+            return
+
+        product_values, variant_values, mappings = process_products(products)
+        print("antes de insertar")
+        insert_or_update_products(cursor, product_values)
+        insert_or_update_variants(cursor, variant_values)
+        update_inventory(cursor, inventory_levels, mappings, locations)
+
+        conn.commit()
+        logging.info("Transacción de base de datos confirmada.")
+    except mysql.connector.Error as err:
+        logging.error(f"Error durante la transacción: {err}")
+        conn.rollback()
+        logging.info("Transacción revertida debido a un error.")
+    finally:
+        cursor.close()
+
+def filter_desired_locations(locations):
+    """Filtra las ubicaciones deseadas según DESIRED_LOCATIONS."""
+    return [loc_id for loc_id in locations if normalize_string(locations[loc_id]) in [normalize_string(name) for name in DESIRED_LOCATIONS]]
+
+def process_products(products):
+    """Procesa los productos y variantes, y devuelve los valores para inserción/actualización y mapeos internos."""
+    product_values = []
+    variant_values = []
+    inventory_item_to_variant = {}
+    variant_id_to_barcode = {}
+    barcodes_set = set()
+    duplicate_barcodes = set()
+
+    for product in products:
+        product_id, title, vendor, price, sku, image_url = extract_product_info(product)
+        product_values.append((product_id, title, vendor, price, sku, image_url))
+
+        for variant in product.get('variants', []):
+            variant_info = extract_variant_info(variant, product_id, barcodes_set, duplicate_barcodes)
+            if variant_info:
+                variant_values.append(variant_info["values"])
+                inventory_item_to_variant[variant_info["inventory_item_id"]] = variant_info["variant_id"]
+                variant_id_to_barcode[variant_info["variant_id"]] = variant_info["barcode"]
+
+    return product_values, variant_values, {"inventory_item_to_variant": inventory_item_to_variant, "variant_id_to_barcode": variant_id_to_barcode}
+
+def extract_product_info(product):
+    """Extrae y limpia la información de un producto."""
+    product_id = product['id']
+    title = clean_string(product.get('title', 'Unknown'))
+    vendor = clean_string(product.get('vendor', 'Unknown'))
+    first_variant = product.get('variants', [])[0] if product.get('variants') else {}
+    price = first_variant.get('price', '0.00')
+    sku = clean_string(first_variant.get('sku', 'Unknown'))
+    image_url = clean_string(product.get('image', {}).get('src', 'Unknown')) if product.get('image') else 'Unknown'
+    return product_id, title, vendor, price, sku, image_url
+
+def extract_variant_info(variant, product_id, barcodes_set, duplicate_barcodes):
+    """Extrae y limpia la información de una variante."""
+    variant_id = variant.get('id')
+    if not variant_id:
+        logging.warning(f"Variante sin variant_id para el producto {product_id}")
+        return None
+
+    variant_title = clean_string(variant.get('title', 'Unknown'))
+    variant_sku = clean_string(variant.get('sku', 'Unknown'))
+    variant_price = variant.get('price', '0.00')
+    variant_barcode_original = variant.get('barcode', 'Unknown')
+    variant_barcode = clean_string(variant_barcode_original)
+    inventory_item_id = variant.get('inventory_item_id')
+
+    if not validate_barcode(variant_barcode) or variant_barcode in duplicate_barcodes:
+        logging.warning(f"Barcode inválido o duplicado para la variante ID {variant_id}. Se establecerá como 'Unknown'.")
+        variant_barcode = 'Unknown'
+    elif variant_barcode != 'Unknown':
+        barcodes_set.add(variant_barcode)
+
+    return {
+        "values": (
+            variant_id, product_id, variant_title, variant_sku, variant_price, 0, variant_barcode, None, 'Unknown'
+        ),
+        "inventory_item_id": inventory_item_id,
+        "variant_id": variant_id,
+        "barcode": variant_barcode
+    }
+
+def insert_or_update_products(cursor, product_values):
+    """Inserta o actualiza los productos en la base de datos."""
+    sql_product = """
+    INSERT INTO productos (product_id, title, vendor, price, sku, image_url)
+    VALUES (%s, %s, %s, %s, %s, %s)
+    ON DUPLICATE KEY UPDATE title=VALUES(title), vendor=VALUES(vendor), price=VALUES(price), sku=VALUES(sku), image_url=VALUES(image_url)
+    """
+    cursor.executemany(sql_product, product_values)
+    logging.info(f"{cursor.rowcount} productos insertados o actualizados.")
+
+def insert_or_update_variants(cursor, variant_values):
+    """Inserta o actualiza las variantes en la base de datos."""
+    sql_variant = """
+    INSERT INTO product_variants (
+        variant_id, product_id, title, sku, price, stock, barcode, location_id, location_name
+    )
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+    ON DUPLICATE KEY UPDATE 
+        title=VALUES(title), sku=VALUES(sku), price=VALUES(price), stock=VALUES(stock), barcode=VALUES(barcode), location_id=VALUES(location_id), location_name=VALUES(location_name)
+    """
+    cursor.executemany(sql_variant, variant_values)
+    logging.info(f"{cursor.rowcount} variantes insertadas o actualizadas.")
+
+def update_inventory(cursor, inventory_levels, mappings, locations):
+    """Actualiza los niveles de inventario y registra los cambios."""
+    inventory_item_to_variant = mappings["inventory_item_to_variant"]
+    variant_id_to_barcode = mappings["variant_id_to_barcode"]
+    log_values = []
+
+    for inventory_item_id, loc_dict in inventory_levels.items():
+        variant_id = inventory_item_to_variant.get(inventory_item_id)
+        if not variant_id:
+            logging.warning(f"No se encontró variant_id para inventory_item_id {inventory_item_id}")
+            continue
+
+        for location_id, available in loc_dict.items():
+            location_name = locations.get(location_id, 'Unknown')
+            if location_name == 'Unknown':
+                logging.error(f"Location ID {location_id} no tiene un nombre asociado.")
+
+            log_inventory_changes(cursor, log_values, inventory_item_id, location_id, available, variant_id, location_name, variant_id_to_barcode)
+
+    if log_values:
+        insert_inventory_logs(cursor, log_values)
+
+def log_inventory_changes(cursor, log_values, inventory_item_id, location_id, available, variant_id, location_name, variant_id_to_barcode):
+    """Registra los cambios en el inventario si son necesarios."""
+    try:
+        cursor.execute("SELECT stock FROM product_variants WHERE variant_id = %s AND location_id = %s", (variant_id, location_id))
+        result = cursor.fetchone()
+        previous_stock = result[0] if result else None
+    except mysql.connector.Error as err:
+        logging.error(f"Error al obtener el stock anterior para variant_id {variant_id}, location_id {location_id}: {err}")
+        return
+
+    if previous_stock is not None and previous_stock != available:
+        diferencia = available - previous_stock
+        log_values.append((
+            inventory_item_id, location_id, previous_stock, available, diferencia, 
+            variant_id_to_barcode.get(variant_id, 'Unknown'), variant_id, variant_id, location_name
+        ))
+
+    try:
+        cursor.execute("""
+            UPDATE product_variants
+            SET stock = %s
+            WHERE variant_id = %s AND location_id = %s
+        """, (available, variant_id, location_id))
+        logging.debug(f"Actualizado stock para variant_id {variant_id}, location_id {location_id} a {available}.")
+    except mysql.connector.Error as err:
+        logging.error(f"Error al actualizar stock para variant_id {variant_id}, location_id {location_id}: {err}")
+
+def insert_inventory_logs(cursor, log_values):
+    """Inserta los registros de cambios de inventario en la base de datos."""
+    sql_log = """
+    INSERT INTO LogsInventario (
+        inventory_item_id, location_id, cantidad_anterior, cantidad_nueva, diferencia, barcode, producto_id, variante_id, nombre_ubicacion
+    )
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """
+    cursor.executemany(sql_log, log_values)
+    logging.info(f"{cursor.rowcount} registros de logs de inventario insertados.")
+
+
 
 db_config=Config()
 
@@ -301,6 +473,11 @@ if products:
                                                             desired_location_ids,
                                                             SHOPIFY_API_CONFIG['api_version'])
 print(f"Total productos obtenidos: {len(products)}")
+with Database(db_config.DB_HOST, db_config.DB_PORT, db_config.DB_USER, db_config.DB_PASSWORD, db_config.DB_NAME) as conn:
+   insert_or_update_products_variants_and_inventory(products, conn, locations, inventory_levels)
+
+conn.close()
+
 print("FIN PROGRAMA")
 
 # while True:
