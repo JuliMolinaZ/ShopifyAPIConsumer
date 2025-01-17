@@ -11,7 +11,7 @@ from math import ceil
 import unicodedata
 
 # Cargar variables de entorno desde .env
-load_dotenv()
+load_dotenv(override=True)#El override asegura que cualquier variable preva se reemplaza por la nueva
 
 # Configuración de Logging
 logging.basicConfig(
@@ -319,6 +319,7 @@ def fetch_inventory_levels(api_key, password, store_name, inventory_item_ids, lo
 
 # Función para insertar o actualizar productos, variantes e inventarios en la base de datos
 def insert_or_update_products_variants_and_inventory(products, conn, locations, inventory_levels):
+    
     cursor = conn.cursor()
     product_values = []
     variant_values = []
@@ -393,6 +394,7 @@ def insert_or_update_products_variants_and_inventory(products, conn, locations, 
                 'Unknown'  # location_name, se actualizará
             ))
 
+    
     # Insertar o actualizar productos
     sql_product = """
     INSERT INTO productos (product_id, title, vendor, price, sku, image_url)
@@ -405,6 +407,7 @@ def insert_or_update_products_variants_and_inventory(products, conn, locations, 
     except mysql.connector.Error as err:
         logging.error(f"Error al insertar o actualizar productos: {err}")
 
+    
     # Insertar o actualizar variantes
     sql_variant = """
     INSERT INTO product_variants (
@@ -428,6 +431,8 @@ def insert_or_update_products_variants_and_inventory(products, conn, locations, 
         location_id=VALUES(location_id),
         location_name=VALUES(location_name)
     """
+    print(variant_values[1])
+    
     try:
         cursor.executemany(sql_variant, variant_values)
         logging.info(f"{cursor.rowcount} variantes insertadas o actualizadas.")
