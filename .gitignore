@@ -1,0 +1,6 @@
+# Ignorar archivos de entorno en cualquier subdirectorio
+**/.env
+
+# Ignorar archivos de log
+*.log
+logs/
