@@ -8,9 +8,13 @@ class Database:
             'port': port,
             'user': user,
             'password': password,
+<<<<<<< HEAD
             'database': database,
             'charset': 'utf8mb4',   
             'use_unicode': True 
+=======
+            'database': database
+>>>>>>> cf1991bb448aefee5e9613a2c09467cfd22d4861
         }
         self.conn = None
 

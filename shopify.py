@@ -1,5 +1,8 @@
+<<<<<<< HEAD
 #shopify.py
 
+=======
+>>>>>>> cf1991bb448aefee5e9613a2c09467cfd22d4861
 import logging
 import random
 import time
@@ -83,3 +86,7 @@ def log_api_call(response):
             logging.warning(f"Formato inesperado en 'X-Shopify-Shop-Api-Call-Limit': {call_limit}")
     else:
         logging.info("El encabezado 'X-Shopify-Shop-Api-Call-Limit' no está presente.")
+<<<<<<< HEAD
+=======
+
+>>>>>>> cf1991bb448aefee5e9613a2c09467cfd22d4861

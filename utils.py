@@ -1,5 +1,8 @@
+<<<<<<< HEAD
 #utils.py
 
+=======
+>>>>>>> cf1991bb448aefee5e9613a2c09467cfd22d4861
 import unicodedata
 import logging
 

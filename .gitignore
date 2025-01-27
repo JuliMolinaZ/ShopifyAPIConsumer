@@ -1,6 +1,22 @@
+<<<<<<< HEAD
 # Ignorar archivos de entorno en cualquier subdirectorio
 **/.env
 
 # Ignorar archivos de log
 *.log
 logs/
+=======
+# Ignorar archivos de log
+*.log
+
+# Ignorar el entorno virtual
+env/
+.env/
+
+# Ignorar el archivo .env con credenciales
+.env
+
+# Ignorar el directorio __pycache__ y los archivos .pyc generados
+__pycache__/
+*.pyc
+>>>>>>> cf1991bb448aefee5e9613a2c09467cfd22d4861

@@ -1,5 +1,8 @@
+<<<<<<< HEAD
 #rate_limiter.py
 
+=======
+>>>>>>> cf1991bb448aefee5e9613a2c09467cfd22d4861
 import requests
 import mysql.connector
 import time
@@ -32,4 +35,8 @@ class RateLimiter:
                 wait_time = wait_time / 2 + random.uniform(0, wait_time / 2)
             logging.info(f"Rate limit alcanzado. Esperando {wait_time:.2f} segundos.")
             time.sleep(wait_time)
+<<<<<<< HEAD
         self.calls.append(time.time())
+=======
+        self.calls.append(time.time())
+>>>>>>> cf1991bb448aefee5e9613a2c09467cfd22d4861
